@@ -39,9 +39,7 @@ ship_data <- read_csv(loc01_underway,
          datetime < as.POSIXct("2023-09-04 01:30:00", tz = "UTC"))
 
 map_plot <- function(data, point_var, palette = "magma", n_quantiles = 20) {
-  # Create color palette
   pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
-  
   # Create Leaflet map
   leaflet(data = data) |> 
     addTiles() |> 
@@ -49,25 +47,15 @@ map_plot <- function(data, point_var, palette = "magma", n_quantiles = 20) {
       radius = 2,
       stroke = FALSE,
       fillOpacity = 0.8,
-      color = ~pal(data[[point_var]])) #|> 
-    #leaflet::addLegend(
-    #  position = "bottomright",
-    #  pal = pal,
-    #  values = data[[point_var]],
-    #  title = "Color legend",
-    #  opacity = 0.8
-    #)
+      color = ~pal(data[[point_var]]))
 }
 
-# Define function to create time series plot
 ts_plot <- function(data, ts_var) {
   loc_ts <- as.xts(data[[ts_var]], data[["datetime"]])
   g <- dygraph(
     data = loc_ts,
     ylab = ts_var,
-    main = paste(ts_var, "vs Time"),
-    
-  ) |> 
+    main = paste(ts_var, "vs Time")) |> 
     dyRangeSelector()
   if (ts_var == "dye") {
     g |> 
@@ -79,66 +67,21 @@ ts_plot <- function(data, ts_var) {
 
 # Define UI
 ui <- fluidPage(
-  titlePanel("Ship Track and Temperature Visualization"),
+  titlePanel("Ship Track Timeseries"),
   sidebarLayout(
     sidebarPanel(
-      selectInput("temp_col", "Temperature Variable:", choices = names(ship_data)[4:6]),
+      selectInput("temp_col", 
+                  "Variable to plot", 
+                  choices = names(ship_data)[4:6]),
       actionButton("update_plot", "Update Plot")
     ),
     mainPanel(
-      leafletOutput("map_plot"),
-      dygraphOutput("time_series_plot")
+      leafletOutput("mapplot"),
+      dygraphOutput("tsplot"),
+      verbatimTextOutput("click")
     )
   )
 )
-
-# server <- function(input, output) {
-#   # Variable to store selected datetime range
-#   selected_datetime_range <- reactive(range(ship_data$datetime))
-#   
-#   # Update map and time series plot based on range selector
-#   observe({
-#     # Get selected datetime range from dygraph
-#     values <- reactiveValues()  
-#     observeEvent(input$time_series_plot_date_window,{
-#       value1 <- input$time_series_plot_date_window[[1]]
-#       value2 <- input$time_series_plot_date_window[[2]]
-#       values$v1 <- value1
-#       values$v2 <- value2
-#     })
-#     # Filter data based on selected range
-#     filtered_data <- ship_data %>%
-#       filter(datetime >= values$v1,
-#              datetime <= values$v2)
-#     
-#     # Update map with markers within the range
-#     output$map_plot <- renderLeaflet({
-#       map_plot(filtered_data, input$temp_col, point_size = 5) |>
-#         addCircleMarkers(
-#           data = filtered_data,
-#           lng = ~lon,
-#           lat = ~lat,
-#           radius = 10,
-#           color = "red",
-#           fillOpacity = 0.8
-#         )
-#     })
-#   })
-#   
-#   # Update time series plot with pointer
-#   output$time_series_plot <- renderDygraph({
-#            ts_plot(ship_data, selected_temp_col)
-#          })
-#   
-#   # Initial plot render
-#   output$map_plot <- renderLeaflet({
-#     map_plot(ship_data, "temp")
-#   })
-#   
-#   output$time_series_plot <- renderDygraph({
-#          ts_plot(ship_data, "temp")
-#        })
-# }
 
 # Define server 
 server <- function(input, output) {
@@ -146,23 +89,29 @@ server <- function(input, output) {
   observeEvent(input$update_plot, {
     selected_temp_col <- input$temp_col
     
-    output$map_plot <- renderLeaflet({
+    output$mapplot <- renderLeaflet({
       map_plot(ship_data, selected_temp_col)
     })
     
-    output$time_series_plot <- renderDygraph({
+    output$tsplot <- renderDygraph({
       ts_plot(ship_data, selected_temp_col)
     })
+    
+    output$click <- renderPrint({
+      paste("Test", format(lubridate::ymd_hms(input$tsplot_click$x, tz = Sys.timezone())))
+    })
+    
   })
   
   # Initial plot render
-  output$map_plot <- renderLeaflet({
-    map_plot(ship_data, "temp")
+  output$mapplot <- renderLeaflet({
+    map_plot(ship_data, "dye")
   })
   
-  output$time_series_plot <- renderDygraph({
-    ts_plot(ship_data, "temp")
+  output$tsplot <- renderDygraph({
+    ts_plot(ship_data, "dye")
   })
+  
 }
 
 # Run the Shiny app
