@@ -101,6 +101,23 @@ server <- function(input, output) {
         paste("Clicked point:", format(lubridate::ymd_hms(input$tsplot_click$x, tz = Sys.timezone())))
       }
     })
+    
+    observeEvent(input$tsplot_click$x, {
+      if(!is.null(input$tsplot_click$x)){
+        selected_time <- lubridate::ymd_hms(input$tsplot_click$x, tz = Sys.timezone())
+        # get the lat lon of the time selected
+        selected_point <- ship_data |> 
+          filter(datetime == selected_time)
+        
+        # leaflet comes with this nice feature leafletProxy
+        #  to avoid rebuilding the whole map
+        #  let's use it
+        leafletProxy( "mapplot", data = ship_data ) |> 
+          #clearMarkers() |> 
+          addMarkers(data = selected_point)
+      }
+    })
+    
   
 }
 
