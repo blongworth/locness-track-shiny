@@ -70,15 +70,14 @@ ui <- fluidPage(
   titlePanel("Ship Track Timeseries"),
   sidebarLayout(
     sidebarPanel(
-      selectInput("temp_col", 
+      selectInput("var_col", 
                   "Variable to plot", 
                   choices = names(ship_data)[4:6]),
-      actionButton("update_plot", "Update Plot")
     ),
     mainPanel(
       leafletOutput("mapplot"),
       dygraphOutput("tsplot"),
-      verbatimTextOutput("click")
+      textOutput("click")
     )
   )
 )
@@ -86,31 +85,22 @@ ui <- fluidPage(
 # Define server 
 server <- function(input, output) {
   # Update map and time series plot on input change
-  observeEvent(input$update_plot, {
-    selected_temp_col <- input$temp_col
     
     output$mapplot <- renderLeaflet({
-      map_plot(ship_data, selected_temp_col)
+      map_plot(ship_data, input$var_col)
     })
     
     output$tsplot <- renderDygraph({
-      ts_plot(ship_data, selected_temp_col)
+      ts_plot(ship_data, input$var_col)
     })
     
-    output$click <- renderPrint({
-      paste("Test", format(lubridate::ymd_hms(input$tsplot_click$x, tz = Sys.timezone())))
+    output$click <- renderText({
+      if (is.null(input$tsplot_click$x)) {
+        "Click on the time series plot to see the details."
+      } else {
+        paste("Clicked point:", format(lubridate::ymd_hms(input$tsplot_click$x, tz = Sys.timezone())))
+      }
     })
-    
-  })
-  
-  # Initial plot render
-  output$mapplot <- renderLeaflet({
-    map_plot(ship_data, "dye")
-  })
-  
-  output$tsplot <- renderDygraph({
-    ts_plot(ship_data, "dye")
-  })
   
 }
 
