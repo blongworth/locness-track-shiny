@@ -113,8 +113,10 @@ server <- function(input, output) {
         #  to avoid rebuilding the whole map
         #  let's use it
         leafletProxy( "mapplot", data = ship_data ) |> 
-          #clearMarkers() |> 
-          addMarkers(data = selected_point)
+          removeMarker(layerId = 'clicked_point') |> 
+          addMarkers(data = selected_point,
+                     layerId = 'clicked_point')
+          
       }
     })
     
