@@ -11,6 +11,7 @@ library(shiny)
 library(leaflet)
 library(ggplot2)
 library(dplyr)
+library(lubridate)
 library(plotly)
 library(readr)
 library(dygraphs)
@@ -37,6 +38,17 @@ ship_data <- read_csv(loc01_underway,
          sal) |> 
   filter(datetime > as.POSIXct("2023-09-02 12:00:00", tz = "UTC"),
          datetime < as.POSIXct("2023-09-04 01:30:00", tz = "UTC"))
+
+# resample dataset
+resample_ship <- function(data, interval_seconds) {
+  data %>%
+    mutate(datetime = floor_date(datetime, 
+                                          unit = paste0(interval_seconds, 
+                                                        " seconds"))) %>%  
+    group_by(datetime) %>%
+    summarise(across(everything(), mean, .names = "{.col}"))
+}
+
 
 map_plot <- function(data, point_var, palette = "magma", n_quantiles = 20) {
   pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
@@ -73,6 +85,7 @@ ui <- fluidPage(
       selectInput("var_col", 
                   "Variable to plot", 
                   choices = names(ship_data)[4:6]),
+      sliderInput("interval", "interval", min = 2, max = 300, value = 60),
     ),
     mainPanel(
       leafletOutput("mapplot"),
@@ -86,12 +99,16 @@ ui <- fluidPage(
 server <- function(input, output) {
   # Update map and time series plot on input change
     
+    filtered_ship <- reactive({
+      resample_ship(ship_data, input$interval)
+    })
+  
     output$mapplot <- renderLeaflet({
-      map_plot(ship_data, input$var_col)
+      map_plot(filtered_ship(), input$var_col)
     })
     
     output$tsplot <- renderDygraph({
-      ts_plot(ship_data, input$var_col)
+      ts_plot(filtered_ship(), input$var_col)
     })
     
     output$click <- renderText({
@@ -106,21 +123,17 @@ server <- function(input, output) {
       if(!is.null(input$tsplot_click$x)){
         selected_time <- lubridate::ymd_hms(input$tsplot_click$x, tz = Sys.timezone())
         # get the lat lon of the time selected
-        selected_point <- ship_data |> 
+        selected_point <- filtered_ship() |> 
           filter(datetime == selected_time)
         
-        # leaflet comes with this nice feature leafletProxy
-        #  to avoid rebuilding the whole map
-        #  let's use it
-        leafletProxy( "mapplot", data = ship_data ) |> 
+        # avoid redraw
+        leafletProxy( "mapplot", data = filtered_ship() ) |> 
           removeMarker(layerId = 'clicked_point') |> 
           addMarkers(data = selected_point,
                      layerId = 'clicked_point')
           
       }
     })
-    
-  
 }
 
 # Run the Shiny app
