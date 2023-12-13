@@ -62,6 +62,18 @@ map_plot <- function(data, point_var, palette = "magma", n_quantiles = 20) {
       color = ~pal(data[[point_var]]))
 }
 
+map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20) {
+  pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
+  # Create Leaflet map
+  leafletProxy(mapid, data = data) |> 
+    clearMarkers() |> 
+    addCircleMarkers(
+      radius = 2,
+      stroke = FALSE,
+      fillOpacity = 0.8,
+      color = ~pal(data[[point_var]]))
+}
+
 ts_plot <- function(data, ts_var) {
   loc_ts <- as.xts(data[[ts_var]], data[["datetime"]])
   g <- dygraph(
@@ -133,6 +145,15 @@ server <- function(input, output) {
                      layerId = 'clicked_point')
           
       }
+    })
+    # React to Dygraph range selection
+    observeEvent(input$tsplot_date_window, {
+      date_range  <- lubridate::ymd_hms(input$tsplot_date_window, tz = Sys.timezone())
+      filtered_data  <- filtered_ship() |> 
+          filter(datetime >= date_range[1],
+                 datetime <= date_range[2])
+      
+      map_add("mapplot", filtered_data, input$var_col)
     })
 }
 
