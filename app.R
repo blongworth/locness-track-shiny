@@ -18,7 +18,7 @@ library(dygraphs)
 library(xts)
 
 # Data locations
-loc01_underway <- "data/LOC-01_Combined_Nav_TSG_Fluo_HydroFIA.txt"
+loc01_underway <- "data/LOC-01_Underway_continuous.txt"
 loc01_drifter <- "data/Drifter_data_combined.csv"
 loc01_ctd <- "data/CTD_downcast_upcast.csv"
 
@@ -97,7 +97,7 @@ ui <- fluidPage(
       selectInput("var_col", 
                   "Variable to plot", 
                   choices = names(ship_data)[4:6]),
-      sliderInput("interval", "interval", min = 2, max = 300, value = 60),
+      sliderInput("interval", "interval", min = 2, max = 60, value = 60),
     ),
     mainPanel(
       leafletOutput("mapplot"),
