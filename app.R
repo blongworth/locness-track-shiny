@@ -11,6 +11,7 @@ library(shiny)
 library(leaflet)
 library(ggplot2)
 library(dplyr)
+library(tidyr)
 library(lubridate)
 library(plotly)
 library(readr)
@@ -25,7 +26,7 @@ loc01_ctd <- "data/CTD_downcast_upcast.csv"
 # Load and prepare sample ship track data
 ship_data <- read_csv(loc01_underway,
                       na = c("", "NA", "NaN"),
-                      col_types = "cnninnnnnncni") |> 
+                      col_types = "cnninnnnnncninnni") |> 
   mutate(datetime = as.POSIXct(DateTime_UTC, 
                                    format = "%d-%b-%Y %H:%M:%S", 
                                    tz = "UTC"),
@@ -35,7 +36,11 @@ ship_data <- read_csv(loc01_underway,
          lon = Longitude,
          dye = Dye_ppb,
          temp = Temp1_C,
-         sal) |> 
+         sal,
+         TA = Corrected_TA_umol_kg_,
+         fCO2sw = fCO2_SW_SST_uatm,
+         fCO2atm = fCO2_ATM_interpolated_uatm,
+         dfCO2 = dfCO2_uatm) |> 
   filter(datetime > as.POSIXct("2023-09-02 12:00:00", tz = "UTC"),
          datetime < as.POSIXct("2023-09-04 01:30:00", tz = "UTC"))
 
@@ -52,6 +57,7 @@ resample_ship <- function(data, interval_seconds) {
 
 map_plot <- function(data, point_var, palette = "magma", n_quantiles = 20) {
   pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
+  data <- drop_na(data, {{point_var}})
   # Create Leaflet map
   leaflet(data = data) |> 
     addTiles() |> 
@@ -64,6 +70,7 @@ map_plot <- function(data, point_var, palette = "magma", n_quantiles = 20) {
 
 map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20) {
   pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
+  data <- drop_na(data, {{point_var}})
   # Create Leaflet map
   leafletProxy(mapid, data = data) |> 
     clearMarkers() |> 
@@ -75,6 +82,7 @@ map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20)
 }
 
 ts_plot <- function(data, ts_var) {
+  data <- drop_na(data, {{ts_var}})
   loc_ts <- as.xts(data[[ts_var]], data[["datetime"]])
   g <- dygraph(
     data = loc_ts,
@@ -96,7 +104,7 @@ ui <- fluidPage(
     sidebarPanel(
       selectInput("var_col", 
                   "Variable to plot", 
-                  choices = names(ship_data)[4:6]),
+                  choices = names(ship_data)[4:10]),
       sliderInput("interval", "interval", min = 2, max = 60, value = 60),
     ),
     mainPanel(
@@ -112,7 +120,11 @@ server <- function(input, output) {
   # Update map and time series plot on input change
     
     filtered_ship <- reactive({
-      resample_ship(ship_data, input$interval)
+      if (input$var_col %in% names(ship_data[4:6])) {
+        resample_ship(ship_data, input$interval)
+      } else {
+        ship_data
+      }
     })
   
     output$mapplot <- renderLeaflet({
