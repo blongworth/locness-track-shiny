@@ -106,6 +106,13 @@ ui <- fluidPage(
                   "Variable to plot", 
                   choices = names(ship_data)[4:10]),
       sliderInput("interval", "interval", min = 2, max = 60, value = 60),
+      sliderInput("time",
+                  label = "Time elapsed",
+                  min = min(ship_data$datetime),
+                  max = max(ship_data$datetime),
+                  value = min(ship_data$datetime), step = 60 * 10,
+                  animate =
+                    animationOptions(interval = 200, loop = TRUE))
     ),
     mainPanel(
       leafletOutput("mapplot"),
@@ -161,6 +168,16 @@ server <- function(input, output) {
     # React to Dygraph range selection
     observeEvent(input$tsplot_date_window, {
       date_range  <- lubridate::ymd_hms(input$tsplot_date_window, tz = Sys.timezone())
+      filtered_data  <- filtered_ship() |> 
+          filter(datetime >= date_range[1],
+                 datetime <= date_range[2])
+      
+      map_add("mapplot", filtered_data, input$var_col)
+    })
+    
+    # React to time selector
+    observeEvent(input$time, {
+      date_range  <- c(input$time, input$time + 3600 * 3)
       filtered_data  <- filtered_ship() |> 
           filter(datetime >= date_range[1],
                  datetime <= date_range[2])
