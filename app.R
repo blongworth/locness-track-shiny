@@ -81,14 +81,17 @@ map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20)
       color = ~pal(data[[point_var]]))
 }
 
-ts_plot <- function(data, ts_var) {
+ts_plot <- function(data, ts_var, 
+                    date_range = as.POSIXct(c("2023-09-02 12:00:00", 
+                                              "2023-09-04 01:30:00"), 
+                                              tz = "UTC")) {
   data <- drop_na(data, {{ts_var}})
   loc_ts <- as.xts(data[[ts_var]], data[["datetime"]])
   g <- dygraph(
     data = loc_ts,
     ylab = ts_var,
     main = paste(ts_var, "vs Time")) |> 
-    dyRangeSelector()
+    dyRangeSelector(dateWindow = date_range)
   if (ts_var == "dye") {
     g |> 
       dyOptions(logscale = TRUE)
@@ -139,7 +142,9 @@ server <- function(input, output) {
     })
     
     output$tsplot <- renderDygraph({
-      ts_plot(filtered_ship(), input$var_col)
+      ts_plot(filtered_ship(), 
+              input$var_col, 
+              c(input$time, input$time + 3600 * 3))
     })
     
     output$click <- renderText({
@@ -183,6 +188,7 @@ server <- function(input, output) {
                  datetime <= date_range[2])
       
       map_add("mapplot", filtered_data, input$var_col)
+      
     })
 }
 
