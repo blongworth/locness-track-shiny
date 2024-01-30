@@ -59,13 +59,15 @@ map_plot <- function(data, point_var, palette = "magma", n_quantiles = 20) {
   pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
   data <- drop_na(data, {{point_var}})
   # Create Leaflet map
-  leaflet(data = data) |> 
+  leaflet(data = data, options = leafletOptions(zoomControl = FALSE)) |> 
     addTiles() |> 
     addCircleMarkers(
       radius = 2,
       stroke = FALSE,
       fillOpacity = 0.8,
-      color = ~pal(data[[point_var]]))
+      #color = ~pal(data[[point_var]])
+      color = "darkgrey"
+    )
 }
 
 map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20) {
@@ -73,8 +75,10 @@ map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20)
   data <- drop_na(data, {{point_var}})
   # Create Leaflet map
   leafletProxy(mapid, data = data) |> 
-    clearMarkers() |> 
+    clearGroup("quantity") |> 
+    #clearMarkers() |> 
     addCircleMarkers(
+      group = "quantity",
       radius = 2,
       stroke = FALSE,
       fillOpacity = 0.8,
@@ -90,11 +94,13 @@ ts_plot <- function(data, ts_var,
   g <- dygraph(
     data = loc_ts,
     ylab = ts_var,
-    main = paste(ts_var, "vs Time")) |> 
+    #main = paste(ts_var, "vs Time")
+    ) |> 
     dyRangeSelector(dateWindow = date_range)
   if (ts_var == "dye") {
     g |> 
-      dyOptions(logscale = TRUE)
+      dyOptions(logscale = TRUE) |> 
+      dyAxis("y", label = "Rhodamine Conc. (ppb)", valueRange = c(1, 250))
   } else {
     g
   }
@@ -118,8 +124,8 @@ ui <- fluidPage(
                     animationOptions(interval = 200, loop = TRUE))
     ),
     mainPanel(
-      leafletOutput("mapplot"),
-      dygraphOutput("tsplot"),
+      leafletOutput("mapplot", height = "60vh"),
+      dygraphOutput("tsplot", height = "30vh"),
       textOutput("click")
     )
   )
@@ -149,7 +155,6 @@ server <- function(input, output) {
     
     output$click <- renderText({
       if (is.null(input$tsplot_click$x)) {
-        "Click on the time series plot to see the details."
       } else {
         paste("Clicked point:", format(lubridate::ymd_hms(input$tsplot_click$x, tz = Sys.timezone())))
       }
