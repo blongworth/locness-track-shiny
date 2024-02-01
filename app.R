@@ -62,6 +62,8 @@ map_plot <- function(data, point_var, palette = "magma", n_quantiles = 20) {
   leaflet(data = data, options = leafletOptions(zoomControl = FALSE)) |> 
     addTiles() |> 
     addCircleMarkers(
+      lng = ~lon,
+      lat= ~lat,
       radius = 2,
       stroke = FALSE,
       fillOpacity = 0.8,
@@ -77,8 +79,9 @@ map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20)
   # Create Leaflet map
   leafletProxy(mapid, data = data) |> 
     clearGroup("quantity") |> 
-    #clearMarkers() |> 
     addCircleMarkers(
+      lng= ~lon,
+      lat= ~lat,
       group = "quantity",
       radius = 2,
       stroke = FALSE,
