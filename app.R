@@ -71,7 +71,8 @@ map_plot <- function(data, point_var, palette = "magma", n_quantiles = 20) {
 }
 
 map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20) {
-  pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
+  pal <- colorQuantile(palette, ship_data[[point_var]], n = n_quantiles)
+  #pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
   data <- drop_na(data, {{point_var}})
   # Create Leaflet map
   leafletProxy(mapid, data = data) |> 
