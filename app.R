@@ -114,14 +114,19 @@ ui <- fluidPage(
       selectInput("var_col", 
                   "Variable to plot", 
                   choices = names(ship_data)[4:10]),
-      sliderInput("interval", "interval", min = 2, max = 60, value = 60),
+      sliderInput("interval", "Averaging (s)", min = 2, max = 60, value = 30),
+      checkboxInput(inputId = "show_moving",
+                    label = strong("Show moving window"),
+                    value = FALSE),
       sliderInput("time",
                   label = "Time elapsed",
                   min = min(ship_data$datetime),
                   max = max(ship_data$datetime),
                   value = min(ship_data$datetime), step = 60 * 10,
                   animate =
-                    animationOptions(interval = 200, loop = TRUE))
+                    animationOptions(interval = 200, loop = TRUE)),
+      #sliderInput("timestep", "Timestep (s)", min = 60, max = 60 * 30, value = 60 * 10),
+      sliderInput("ts_window", "Time window (m)", min = 1 * 60, max = 6 * 60 , value = 3 * 60),
     ),
     mainPanel(
       leafletOutput("mapplot", height = "60vh"),
@@ -150,7 +155,7 @@ server <- function(input, output) {
     output$tsplot <- renderDygraph({
       ts_plot(filtered_ship(), 
               input$var_col, 
-              c(input$time, input$time + 3600 * 3))
+              c(input$time, input$time + input$ts_window * 60))
     })
     
     output$click <- renderText({
@@ -187,7 +192,7 @@ server <- function(input, output) {
     
     # React to time selector
     observeEvent(input$time, {
-      date_range  <- c(input$time, input$time + 3600 * 3)
+      date_range  <- c(input$time, input$time + input$ts_window * 60)
       filtered_data  <- filtered_ship() |> 
           filter(datetime >= date_range[1],
                  datetime <= date_range[2])
