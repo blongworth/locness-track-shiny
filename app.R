@@ -126,7 +126,7 @@ ui <- fluidPage(
                   animate =
                     animationOptions(interval = 200, loop = TRUE)),
       #sliderInput("timestep", "Timestep (s)", min = 60, max = 60 * 30, value = 60 * 10),
-      sliderInput("ts_window", "Time window (m)", min = 1 * 60, max = 6 * 60 , value = 3 * 60),
+      sliderInput("ts_window", "Time window (m)", min = 1 * 60, max = 2249.9, value = 3 * 60),
     ),
     mainPanel(
       leafletOutput("mapplot", height = "60vh"),
