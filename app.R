@@ -60,7 +60,22 @@ map_plot <- function(data, point_var, palette = "magma", n_quantiles = 20) {
   data <- drop_na(data, {{point_var}})
   # Create Leaflet map
   leaflet(data = data, options = leafletOptions(zoomControl = FALSE)) |> 
-    addTiles() |> 
+    #addTiles() |> 
+    # add ocean basemap
+    addProviderTiles(providers$Esri.OceanBasemap) %>%
+    addMiniMap(tiles = providers$Esri,
+               toggleDisplay = TRUE,
+               position = "bottomleft") %>%
+    # add another layer with place names
+    # addProviderTiles(providers$Hydda.RoadsAndLabels, group = 'Place names') %>%
+    # 
+    # # add graticules from a NOAA webserver
+    # addWMSTiles(
+    #   "https://gis.ngdc.noaa.gov/arcgis/services/graticule/MapServer/WMSServer/",
+    #   layers = c("1-degree grid", "5-degree grid"),
+    #   options = WMSTileOptions(format = "image/png8", transparent = TRUE),
+    #   attribution = NULL,group = 'Graticules') %>%
+    
     addCircleMarkers(
       lng = ~lon,
       lat= ~lat,
@@ -79,6 +94,7 @@ map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20)
   # Create Leaflet map
   leafletProxy(mapid, data = data) |> 
     clearGroup("quantity") |> 
+    removeControl("legend") |> 
     addCircleMarkers(
       lng= ~lon,
       lat= ~lat,
@@ -86,7 +102,17 @@ map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20)
       radius = 2,
       stroke = FALSE,
       fillOpacity = 0.8,
-      color = ~pal(data[[point_var]]))
+      color = ~pal(data[[point_var]])) |> 
+    leaflet::addLegend(layerId = "legend",
+                       pal = pal, 
+                       values = ~ship_data[[point_var]], 
+              #title = point_var,
+              title = "Rhodamine (ppb)",
+                       opacity = 1,
+                       labFormat = function(type, cuts, p) {
+      cuts[length(cuts)] <- NA
+      round(cuts, 2)
+    })
 }
 
 ts_plot <- function(data, ts_var, 
@@ -131,10 +157,11 @@ ui <- fluidPage(
                     animationOptions(interval = 200, loop = TRUE)),
       #sliderInput("timestep", "Timestep (s)", min = 60, max = 60 * 30, value = 60 * 10),
       sliderInput("ts_window", "Time window (m)", min = 1 * 60, max = 2249.9, value = 3 * 60),
+      width = 3
     ),
     mainPanel(
-      leafletOutput("mapplot", height = "60vh"),
-      dygraphOutput("tsplot", height = "30vh"),
+      leafletOutput("mapplot", height = "70vh"),
+      dygraphOutput("tsplot", height = "20vh"),
       textOutput("click")
     )
   )
@@ -165,28 +192,37 @@ server <- function(input, output) {
     output$click <- renderText({
       if (is.null(input$tsplot_click$x)) {
       } else {
-        paste("Clicked point:", format(lubridate::ymd_hms(input$tsplot_click$x, tz = Sys.timezone())))
+        paste("Clicked point:", 
+              format(lubridate::ymd_hms(input$tsplot_click$x, 
+                                        tz = Sys.timezone(), 
+                                        quiet = TRUE)))
       }
     })
     
     observeEvent(input$tsplot_click$x, {
       if(!is.null(input$tsplot_click$x)){
-        selected_time <- lubridate::ymd_hms(input$tsplot_click$x, tz = Sys.timezone())
+        selected_time <- lubridate::ymd_hms(input$tsplot_click$x, 
+                                            tz = Sys.timezone(), 
+                                            quiet = TRUE)
         # get the lat lon of the time selected
         selected_point <- filtered_ship() |> 
           filter(datetime == selected_time)
         
         # avoid redraw
-        leafletProxy( "mapplot", data = filtered_ship() ) |> 
+        leafletProxy( "mapplot", data = filtered_ship()) |> 
           removeMarker(layerId = 'clicked_point') |> 
           addMarkers(data = selected_point,
+                     lng= ~lon,
+                     lat= ~lat,
                      layerId = 'clicked_point')
-          
+        
       }
     })
     # React to Dygraph range selection
     observeEvent(input$tsplot_date_window, {
-      date_range  <- lubridate::ymd_hms(input$tsplot_date_window, tz = Sys.timezone())
+      date_range  <- lubridate::ymd_hms(input$tsplot_date_window, 
+                                        tz = Sys.timezone(),
+                                        quiet = TRUE)
       filtered_data  <- filtered_ship() |> 
           filter(datetime >= date_range[1],
                  datetime <= date_range[2])
