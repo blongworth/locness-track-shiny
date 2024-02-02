@@ -48,8 +48,8 @@ ship_data <- read_csv(loc01_underway,
 resample_ship <- function(data, interval_seconds) {
   data %>%
     mutate(datetime = floor_date(datetime, 
-                                          unit = paste0(interval_seconds, 
-                                                        " seconds"))) %>%  
+                                 unit = paste0(interval_seconds, 
+                                               " seconds"))) %>%  
     group_by(datetime) %>%
     summarise(across(everything(), mean, .names = "{.col}"))
 }
@@ -58,31 +58,21 @@ resample_ship <- function(data, interval_seconds) {
 map_plot <- function(data, point_var, palette = "magma", n_quantiles = 20) {
   pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
   data <- drop_na(data, {{point_var}})
-  # Create Leaflet map
   leaflet(data = data, options = leafletOptions(zoomControl = FALSE)) |> 
-    #addTiles() |> 
     # add ocean basemap
     addProviderTiles(providers$Esri.OceanBasemap) %>%
     addMiniMap(tiles = providers$Esri,
                toggleDisplay = TRUE,
-               position = "bottomleft") %>%
-    # add another layer with place names
-    # addProviderTiles(providers$Hydda.RoadsAndLabels, group = 'Place names') %>%
-    # 
-    # # add graticules from a NOAA webserver
-    # addWMSTiles(
-    #   "https://gis.ngdc.noaa.gov/arcgis/services/graticule/MapServer/WMSServer/",
-    #   layers = c("1-degree grid", "5-degree grid"),
-    #   options = WMSTileOptions(format = "image/png8", transparent = TRUE),
-    #   attribution = NULL,group = 'Graticules') %>%
-    
+               position = "bottomleft",
+               width = 200, 
+               height = 200,
+               zoomLevelOffset = -6) %>%
     addCircleMarkers(
       lng = ~lon,
       lat= ~lat,
       radius = 2,
       stroke = FALSE,
-      fillOpacity = 0.8,
-      #color = ~pal(data[[point_var]])
+      fillOpacity = 0.5,
       color = "darkgrey"
     )
 }
@@ -91,7 +81,6 @@ map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20)
   pal <- colorQuantile(palette, ship_data[[point_var]], n = n_quantiles)
   #pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
   data <- drop_na(data, {{point_var}})
-  # Create Leaflet map
   leafletProxy(mapid, data = data) |> 
     clearGroup("quantity") |> 
     removeControl("legend") |> 
@@ -107,8 +96,10 @@ map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20)
                        pal = pal, 
                        values = ~ship_data[[point_var]], 
               #title = point_var,
-              title = "Rhodamine (ppb)",
-                       opacity = 1,
+              title = ifelse(point_var == "dye", 
+                             "Rhodamine (ppb)",
+                             point_var),
+                       opacity = .8,
                        labFormat = function(type, cuts, p) {
       cuts[length(cuts)] <- NA
       round(cuts, 2)
