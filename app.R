@@ -77,13 +77,34 @@ map_plot <- function(data, point_var, palette = "magma", n_quantiles = 20) {
     )
 }
 
-map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20) {
+map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20,
+                    new_legend = TRUE) {
   pal <- colorQuantile(palette, ship_data[[point_var]], n = n_quantiles)
   #pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
   data <- drop_na(data, {{point_var}})
-  leafletProxy(mapid, data = data) |> 
-    clearGroup("quantity") |> 
-    removeControl("legend") |> 
+  m <- leafletProxy(mapid, data = data) |> 
+    clearGroup("quantity")
+  
+  if (new_legend) {
+    m <- m |> 
+      removeControl("legend") |> 
+      leaflet::addLegend(layerId = "legend",
+                         pal = pal, 
+                         values = ~ship_data[[point_var]], 
+                         #title = point_var,
+                         title = ifelse(point_var == "dye", 
+                                        "Rhodamine (ppb)",
+                                        point_var),
+                         opacity = .8,
+                         labFormat = function(type, cuts, p) {
+                           n = length(cuts)
+                           cuts <- round(cuts, 1)
+                           paste0(cuts[-n], " &ndash; ", cuts[-1])
+                           #cuts[length(cuts)] <- NA
+                         })
+  }
+  
+  m |> 
     addCircleMarkers(
       lng= ~lon,
       lat= ~lat,
@@ -91,19 +112,7 @@ map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20)
       radius = 2,
       stroke = FALSE,
       fillOpacity = 0.8,
-      color = ~pal(data[[point_var]])) |> 
-    leaflet::addLegend(layerId = "legend",
-                       pal = pal, 
-                       values = ~ship_data[[point_var]], 
-              #title = point_var,
-              title = ifelse(point_var == "dye", 
-                             "Rhodamine (ppb)",
-                             point_var),
-                       opacity = .8,
-                       labFormat = function(type, cuts, p) {
-      cuts[length(cuts)] <- NA
-      round(cuts, 2)
-    })
+      color = ~pal(data[[point_var]]))
 }
 
 ts_plot <- function(data, ts_var, 
@@ -135,7 +144,7 @@ ui <- fluidPage(
       selectInput("var_col", 
                   "Variable to plot", 
                   choices = names(ship_data)[4:10]),
-      sliderInput("interval", "Averaging (s)", min = 2, max = 60, value = 30),
+      sliderInput("interval", "Averaging (s)", min = 2, max = 60, value = 15),
       checkboxInput(inputId = "show_moving",
                     label = strong("Show moving window"),
                     value = FALSE),
@@ -148,7 +157,7 @@ ui <- fluidPage(
                     animationOptions(interval = 200, loop = TRUE)),
       #sliderInput("timestep", "Timestep (s)", min = 60, max = 60 * 30, value = 60 * 10),
       sliderInput("ts_window", "Time window (m)", min = 1 * 60, max = 2249.9, value = 3 * 60),
-      width = 3
+      width = 2
     ),
     mainPanel(
       leafletOutput("mapplot", height = "70vh"),
@@ -180,46 +189,46 @@ server <- function(input, output) {
               c(input$time, input$time + input$ts_window * 60))
     })
     
-    output$click <- renderText({
-      if (is.null(input$tsplot_click$x)) {
-      } else {
-        paste("Clicked point:", 
-              format(lubridate::ymd_hms(input$tsplot_click$x, 
-                                        tz = Sys.timezone(), 
-                                        quiet = TRUE)))
-      }
-    })
+   # output$click <- renderText({
+   #   if (is.null(input$tsplot_click$x)) {
+   #   } else {
+   #     paste("Clicked point:", 
+   #           format(lubridate::ymd_hms(input$tsplot_click$x, 
+   #                                     tz = Sys.timezone(), 
+   #                                     quiet = TRUE)))
+   #   }
+   # })
     
-    observeEvent(input$tsplot_click$x, {
-      if(!is.null(input$tsplot_click$x)){
-        selected_time <- lubridate::ymd_hms(input$tsplot_click$x, 
-                                            tz = Sys.timezone(), 
-                                            quiet = TRUE)
-        # get the lat lon of the time selected
-        selected_point <- filtered_ship() |> 
-          filter(datetime == selected_time)
-        
-        # avoid redraw
-        leafletProxy( "mapplot", data = filtered_ship()) |> 
-          removeMarker(layerId = 'clicked_point') |> 
-          addMarkers(data = selected_point,
-                     lng= ~lon,
-                     lat= ~lat,
-                     layerId = 'clicked_point')
-        
-      }
-    })
+   # observeEvent(input$tsplot_click$x, {
+   #   if(!is.null(input$tsplot_click$x)){
+   #     selected_time <- lubridate::ymd_hms(input$tsplot_click$x, 
+   #                                         tz = Sys.timezone(), 
+   #                                         quiet = TRUE)
+   #     # get the lat lon of the time selected
+   #     selected_point <- filtered_ship() |> 
+   #       filter(datetime == selected_time)
+   #     
+   #     # avoid redraw
+   #     leafletProxy( "mapplot", data = filtered_ship()) |> 
+   #       removeMarker(layerId = 'clicked_point') |> 
+   #       addMarkers(data = selected_point,
+   #                  lng= ~lon,
+   #                  lat= ~lat,
+   #                  layerId = 'clicked_point')
+   #     
+   #   }
+   # })
     # React to Dygraph range selection
-    observeEvent(input$tsplot_date_window, {
-      date_range  <- lubridate::ymd_hms(input$tsplot_date_window, 
-                                        tz = Sys.timezone(),
-                                        quiet = TRUE)
-      filtered_data  <- filtered_ship() |> 
-          filter(datetime >= date_range[1],
-                 datetime <= date_range[2])
-      
-      map_add("mapplot", filtered_data, input$var_col)
-    })
+   # observeEvent(input$tsplot_date_window, {
+   #   date_range  <- lubridate::ymd_hms(input$tsplot_date_window, 
+   #                                     tz = Sys.timezone(),
+   #                                     quiet = TRUE)
+   #   filtered_data  <- filtered_ship() |> 
+   #       filter(datetime >= date_range[1],
+   #              datetime <= date_range[2])
+   #   
+   #   map_add("mapplot", filtered_data, input$var_col, new_legend = FALSE)
+   # })
     
     # React to time selector
     observeEvent(input$time, {
@@ -228,7 +237,10 @@ server <- function(input, output) {
           filter(datetime >= date_range[1],
                  datetime <= date_range[2])
       
-      map_add("mapplot", filtered_data, input$var_col)
+      map_add("mapplot", filtered_data, input$var_col, new_legend = TRUE)
+     # ts_plot(filtered_ship(), 
+     #         input$var_col, 
+     #         c(input$time, input$time + input$ts_window * 60))
       
     })
 }
