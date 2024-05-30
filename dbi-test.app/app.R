@@ -3,10 +3,12 @@ library(shiny)
 library(RSQLite)
 library(dplyr)
 library(leaflet)
+library(dygraphs)
 library(DBI)
 library(here)
 
-DB_FILE <- here("data/data.db")
+
+DB_FILE <- here("../locness-fluorologger/data.db")
 
 # Define UI
 ui <- fluidPage(
@@ -21,7 +23,8 @@ ui <- fluidPage(
                   step = 3600)
     ),
     mainPanel(
-      leafletOutput("map")
+        leafletOutput("map", height = "70vh"),
+        dygraphOutput("tsplot", height = "20vh")
     )
   )
 )
@@ -31,9 +34,9 @@ server <- function(input, output, session) {
   # Reactive expression to fetch data based on time range
   data <- reactive({
     con <- dbConnect(RSQLite::SQLite(), DB_FILE)
-    query <- sprintf("SELECT * FROM locations WHERE time BETWEEN '%s' AND '%s'",
-                     format(input$time[1], "%Y-%m-%d %H:%M:%S"),
-                     format(input$time[2], "%Y-%m-%d %H:%M:%S"))
+    query <- sprintf("SELECT * FROM data WHERE timestamp BETWEEN '%s' AND '%s'",
+                     as.integer(input$time[1]),
+                     as.integer(input$time[2]))
     df <- dbGetQuery(con, query)
     dbDisconnect(con)
     df
@@ -42,18 +45,29 @@ server <- function(input, output, session) {
   # Render Leaflet map
   output$map <- renderLeaflet({
     df <- data()
-    #pal <- colorNumeric(palette = "viridis", domain = df$value)
-    pal <- colorQuantile(palette = "magma", domain = df$value, n = 20)
+    #pal <- colorNumeric(palette = "viridis", domain = df$concentration)
+    pal <- colorQuantile(palette = "magma", domain = df$concentration, n = 20)
     leaflet(df) %>%
       addTiles() %>%
       addCircleMarkers(~longitude, ~latitude,
-                       color = ~pal(value),
+                       color = ~pal(concentration),
                        radius = 1,
                        fillOpacity = 0.7,
-                       popup = ~paste("Value:", value)) %>%
-      addLegend("bottomright", pal = pal, values = ~value,
+                       popup = ~paste("Value:", concentration)) %>%
+      leaflet::addLegend("bottomright", pal = pal, values = ~concentration,
                 title = "Value",
                 opacity = 1)
+  })
+  
+  #Render timeseries
+  output$tsplot <- renderDygraph({
+    df <- data() %>%
+      mutate(timestamp = as.POSIXct(timestamp)) %>% 
+      select(timestamp, concentration)
+    dygraph(df) %>% 
+      dyRangeSelector() %>% 
+      dyOptions(logscale = TRUE) |> 
+      dyAxis("y", label = "Rhodamine Conc. (ppb)", valueRange = c(0.1, 250))
   })
 }
 
