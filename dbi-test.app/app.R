@@ -20,7 +20,9 @@ ui <- fluidPage(
                   max = Sys.time(),
                   value = c(as.POSIXct("2023-01-01 00:00:00"), Sys.time()),
                   timeFormat = "%Y-%m-%d %H:%M:%S",
-                  step = 3600)
+                  step = 3600),
+      textOutput("npoints"),
+      textOutput("mean")
     ),
     mainPanel(
         leafletOutput("map", height = "70vh"),
@@ -33,10 +35,12 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   # Reactive expression to fetch data based on time range
   data <- reactive({
+    invalidateLater(5000)
     con <- dbConnect(RSQLite::SQLite(), DB_FILE)
     query <- sprintf("SELECT * FROM data WHERE timestamp BETWEEN '%s' AND '%s'",
                      as.integer(input$time[1]),
-                     as.integer(input$time[2]))
+                     #as.integer(input$time[2])) #need current time
+                     as.integer(Sys.time()))
     df <- dbGetQuery(con, query)
     dbDisconnect(con)
     df
@@ -67,8 +71,11 @@ server <- function(input, output, session) {
     dygraph(df) %>% 
       dyRangeSelector() %>% 
       dyOptions(logscale = TRUE) |> 
-      dyAxis("y", label = "Rhodamine Conc. (ppb)", valueRange = c(0.1, 250))
+      dyAxis("y", label = "Rhodamine Conc. (ppb)", valueRange = c(0.001, 500))
   })
+  
+  output$npoints <- renderText(nrow(data()))
+  output$mean <- renderText(mean(data()$voltage, na.rm = TRUE))
 }
 
 # Run the application 
