@@ -10,11 +10,15 @@ library(here)
 
 DB_FILE <- here("../locness-fluorologger/data.db")
 
-read_data <- function(db_file, time_range) {
+read_data <- function(db_file, time_range = FALSE) {
   con <- dbConnect(RSQLite::SQLite(), db_file)
-  query <- sprintf("SELECT * FROM data WHERE timestamp BETWEEN '%s' AND '%s'",
-                   as.integer(time_range[1]),
-                   as.integer(time_range[2]))
+  if (time_range) {
+    query <- sprintf("SELECT * FROM data WHERE timestamp BETWEEN '%s' AND '%s'",
+                     as.integer(time_range[1]),
+                     as.integer(time_range[2]))
+  } else {
+    query <- "SELECT * FROM data"
+  }  
   df <- dbGetQuery(con, query)
   dbDisconnect(con)
   df
@@ -62,20 +66,18 @@ ui <- fluidPage(
 
 # Define server logic
 server <- function(input, output, session) {
-  # Reactive expression to fetch data based on time range
-  data <- reactive({
-    invalidateLater(5000)
-    if (input$current) {
-      time_range <- c(input$time[1], Sys.time())
-    } else {
-      time_range <- input$time
-    }
-    new_data <- read_data(DB_FILE, time_range)
-    if (!identical(new_data, data())) {
-      data(new_data)
-    }
-  })
   
+  data <- reactiveVal(read_data(DB_FILE))
+  
+  # Reactive expression to fetch data based on time range
+  autoInvalidate <- reactiveTimer(5000)
+  
+  observe({
+    autoInvalidate()
+    time_range <- c(input$time[1], Sys.time())
+    new_data <- read_data(DB_FILE, time_range = FALSE)
+  })
+
   # Render Base map
   output$map <- renderLeaflet({
     leaflet() %>%
