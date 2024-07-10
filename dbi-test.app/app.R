@@ -10,6 +10,34 @@ library(here)
 
 DB_FILE <- here("../locness-fluorologger/data.db")
 
+read_data <- function(db_file, time_range) {
+  con <- dbConnect(RSQLite::SQLite(), db_file)
+  query <- sprintf("SELECT * FROM data WHERE timestamp BETWEEN '%s' AND '%s'",
+                   as.integer(time_range[1]),
+                   as.integer(time_range[2]))
+  df <- dbGetQuery(con, query)
+  dbDisconnect(con)
+  df
+}
+
+update_map <- function() {
+  current_data <- data()
+  #pal <- colorNumeric(palette = "viridis", domain = current_data$concentration)
+  pal <- colorQuantile(palette = "magma",
+                       domain = current_data$concentration,
+                       n = 20)
+  leafletProxy("map") %>%
+    clearMarkers() %>%
+    addCircleMarkers(~longitude, ~latitude,
+                     color = ~pal(concentration),
+                     radius = 1,
+                     fillOpacity = 0.7,
+                     popup = ~paste("Value:", concentration)) %>%
+    leaflet::addLegend("bottomright", pal = pal, values = ~concentration,
+              title = "Value",
+              opacity = 1)
+}
+
 # Define UI
 ui <- fluidPage(
   titlePanel("Mapping Data from SQLite Database"),
@@ -21,6 +49,7 @@ ui <- fluidPage(
                   value = c(as.POSIXct("2023-01-01 00:00:00"), Sys.time()),
                   timeFormat = "%Y-%m-%d %H:%M:%S",
                   step = 3600),
+      checkboxInput("current", "Autoupdate", value = TRUE),
       textOutput("npoints"),
       textOutput("mean")
     ),
@@ -36,32 +65,26 @@ server <- function(input, output, session) {
   # Reactive expression to fetch data based on time range
   data <- reactive({
     invalidateLater(5000)
-    con <- dbConnect(RSQLite::SQLite(), DB_FILE)
-    query <- sprintf("SELECT * FROM data WHERE timestamp BETWEEN '%s' AND '%s'",
-                     as.integer(input$time[1]),
-                     #as.integer(input$time[2])) #need current time
-                     as.integer(Sys.time()))
-    df <- dbGetQuery(con, query)
-    dbDisconnect(con)
-    df
+    if (input$current) {
+      time_range <- c(input$time[1], Sys.time())
+    } else {
+      time_range <- input$time
+    }
+    new_data <- read_data(DB_FILE, time_range)
+    if (!identical(new_data, data())) {
+      data(new_data)
+    }
   })
   
-  # Render Leaflet map
+  # Render Base map
   output$map <- renderLeaflet({
-    df <- data()
-    #pal <- colorNumeric(palette = "viridis", domain = df$concentration)
-    pal <- colorQuantile(palette = "magma", domain = df$concentration, n = 20)
-    leaflet(df) %>%
+    leaflet() %>%
       addTiles() %>%
-      addCircleMarkers(~longitude, ~latitude,
-                       color = ~pal(concentration),
-                       radius = 1,
-                       fillOpacity = 0.7,
-                       popup = ~paste("Value:", concentration)) %>%
-      leaflet::addLegend("bottomright", pal = pal, values = ~concentration,
-                title = "Value",
-                opacity = 1)
+      setView(lng = -70.9, lat = 41.1, zoom = 2) # set initial view
   })
+  
+  # Update when data changes
+  observeEvent(data(), update_map())
   
   #Render timeseries
   output$tsplot <- renderDygraph({
