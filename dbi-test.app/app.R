@@ -2,13 +2,89 @@
 library(shiny)
 library(RSQLite)
 library(dplyr)
+library(tidyr)
 library(leaflet)
 library(dygraphs)
 library(DBI)
 library(here)
 
-
 DB_FILE <- here("../locness-fluorologger/data.db")
+
+get_data <- function(db_file, time_range) {
+  con <- dbConnect(RSQLite::SQLite(), DB_FILE)
+  query <- sprintf("SELECT * FROM data
+                   WHERE timestamp BETWEEN '%s' AND '%s'",
+                   time_range[1],
+                   time_range[2])
+  df <- dbGetQuery(con, query)
+  dbDisconnect(con)
+  df
+}
+    
+map_plot <- function() {
+  leaflet(options = leafletOptions(zoomControl = FALSE)) |> 
+    # add ocean basemap
+    addProviderTiles(providers$Esri.OceanBasemap) %>%
+    addMiniMap(tiles = providers$Esri,
+               toggleDisplay = TRUE,
+               position = "bottomleft",
+               width = 200, 
+               height = 200,
+               zoomLevelOffset = -6)
+}
+
+map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20,
+                    new_legend = TRUE) {
+  pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
+  #pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
+  data <- drop_na(data, {{point_var}})
+  m <- leafletProxy(mapid, data = data) |> 
+    clearGroup("quantity")
+  
+  if (new_legend) {
+    m <- m |> 
+      removeControl("legend") |> 
+      leaflet::addLegend(layerId = "legend",
+                         pal = pal, 
+                         values = ~data[[point_var]], 
+                         #title = point_var,
+                         title = ifelse(point_var == "concentration", 
+                                        "Rhodamine (ppb)",
+                                        point_var),
+                         opacity = .8,
+                         labFormat = function(type, cuts, p) {
+                           n = length(cuts)
+                           cuts <- round(cuts, 1)
+                           paste0(cuts[-n], " &ndash; ", cuts[-1])
+                           #cuts[length(cuts)] <- NA
+                         })
+  }
+  
+  m |> 
+    addCircleMarkers(
+      lng= ~longitude,
+      lat= ~latitude,
+      group = "quantity",
+      radius = 2,
+      stroke = FALSE,
+      fillOpacity = 0.8,
+      color = ~pal(data[[point_var]]))
+}
+
+#map_add <- function(data) {
+#    #pal <- colorNumeric(palette = "viridis", domain = df$concentration)
+#    pal <- colorQuantile(palette = "magma", domain = df$concentration, n = 20)
+#    leaflet(df) %>%
+#      addTiles() %>%
+#      addCircleMarkers(~longitude, ~latitude,
+#                       color = ~pal(concentration),
+#                       radius = 1,
+#                       fillOpacity = 0.7,
+#                       popup = ~paste("Value:", concentration)) %>%
+#      leaflet::addLegend("bottomright", pal = pal, values = ~concentration,
+#                title = "Value",
+#                opacity = 1)
+#}
 
 # Define UI
 ui <- fluidPage(
@@ -36,31 +112,20 @@ server <- function(input, output, session) {
   # Reactive expression to fetch data based on time range
   data <- reactive({
     invalidateLater(5000)
-    con <- dbConnect(RSQLite::SQLite(), DB_FILE)
-    query <- sprintf("SELECT * FROM data WHERE timestamp BETWEEN '%s' AND '%s'",
-                     as.integer(input$time[1]),
-                     #as.integer(input$time[2])) #need current time
-                     as.integer(Sys.time()))
-    df <- dbGetQuery(con, query)
-    dbDisconnect(con)
-    df
+    time_range <- c(as.integer(input$time[1]),
+                    as.integer(Sys.time()))
+    get_data(DB_FILE, time_range)
   })
   
   # Render Leaflet map
   output$map <- renderLeaflet({
+    map_plot()
+  })
+  
+  # Add points Leaflet map
+  observe({
     df <- data()
-    #pal <- colorNumeric(palette = "viridis", domain = df$concentration)
-    pal <- colorQuantile(palette = "magma", domain = df$concentration, n = 20)
-    leaflet(df) %>%
-      addTiles() %>%
-      addCircleMarkers(~longitude, ~latitude,
-                       color = ~pal(concentration),
-                       radius = 1,
-                       fillOpacity = 0.7,
-                       popup = ~paste("Value:", concentration)) %>%
-      leaflet::addLegend("bottomright", pal = pal, values = ~concentration,
-                title = "Value",
-                opacity = 1)
+    map_add("map", df, "concentration")
   })
   
   #Render timeseries
