@@ -12,13 +12,14 @@ library(bslib)
 DB_FILE <- here("../locness-fluorologger/data.db")
 
 # TODO: Catch no data error
-get_data <- function(db_file, time_range) {
+get_data <- function(db_file, time_range, last_read_time) {
   con <- dbConnect(RSQLite::SQLite(), DB_FILE)
   query <- sprintf("SELECT * FROM data
                    WHERE timestamp BETWEEN '%s' AND '%s'",
                    time_range[1],
                    time_range[2])
-  df <- dbGetQuery(con, query)
+  df <- dbGetQuery(con, query) |> 
+    mutate(new = timestamp > last_read_time)
   dbDisconnect(con)
   df
 }
@@ -31,16 +32,20 @@ map_plot <- function() {
 }
 
 map_add <- function(mapid, data, point_var, 
+                    plot_new = FALSE,
                     palette = "magma", n_quantiles = 20,
                     new_legend = TRUE) {
   pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
   #pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
+  if (plot_new) {
+    data <- data |> filter(new)
+  }
   data <- drop_na(data, {{point_var}})
   ship_lat <- data$latitude[nrow(data)]
   ship_lon <- data$longitude[nrow(data)]
   m <- leafletProxy(mapid, data = data) |> 
-    clearGroup("ship") |> 
-    clearGroup("quantity") 
+    clearGroup("ship")# |> 
+    #clearGroup("quantity") 
   if (new_legend) {
     m <- m |> 
       removeControl("legend") |> 
@@ -94,7 +99,9 @@ ui <- page_sidebar(
                 step = 3600),
     input_dark_mode(id = "dark_mode", mode = "light"),
     textOutput("npoints"),
-    textOutput("mean")
+    textOutput("mean"),
+    textOutput("time"),
+    textOutput("lasttime")
   ),
   card(
     leafletOutput("map", height = "70vh"),
@@ -104,12 +111,17 @@ ui <- page_sidebar(
 
 # Define server logic
 server <- function(input, output, session) {
+  
+  last_read_time <- reactiveVal(0L)
+  
   # Reactive expression to fetch data based on time range
   data <- reactive({
     invalidateLater(5000)
     time_range <- c(as.integer(input$time[1]),
                     as.integer(Sys.time()))
-    get_data(DB_FILE, time_range)
+    df <- get_data(DB_FILE, time_range, FALSE) #as.integer(Sys.time()) - 5) #last_read_time())
+    last_read_time(df$timestamp[nrow(df)])
+    df
   })
   
   observeEvent(input$dark_mode, {
@@ -125,8 +137,7 @@ server <- function(input, output, session) {
   
   # Add points Leaflet map
   observe({
-    df <- data()
-    map_add("map", df, "concentration")
+    map_add("map", data(), "concentration", plot_new = TRUE)
   })
   
   #Render timeseries
@@ -142,6 +153,8 @@ server <- function(input, output, session) {
   
   output$npoints <- renderText(nrow(data()))
   output$mean <- renderText(mean(data()$voltage, na.rm = TRUE))
+  output$time <- renderText(data()$timestamp[nrow(data())])
+  output$lasttime <- renderText(last_read_time())
 }
 
 # Run the application 
