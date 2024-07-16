@@ -7,6 +7,7 @@ library(leaflet)
 library(dygraphs)
 library(DBI)
 library(here)
+library(bslib)
 
 DB_FILE <- here("../locness-fluorologger/data.db")
 
@@ -67,39 +68,29 @@ map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20,
       color = ~pal(data[[point_var]]))
 }
 
-#map_add <- function(data) {
-#    #pal <- colorNumeric(palette = "viridis", domain = df$concentration)
-#    pal <- colorQuantile(palette = "magma", domain = df$concentration, n = 20)
-#    leaflet(df) %>%
-#      addTiles() %>%
-#      addCircleMarkers(~longitude, ~latitude,
-#                       color = ~pal(concentration),
-#                       radius = 1,
-#                       fillOpacity = 0.7,
-#                       popup = ~paste("Value:", concentration)) %>%
-#      leaflet::addLegend("bottomright", pal = pal, values = ~concentration,
-#                title = "Value",
-#                opacity = 1)
-#}
-
 # Define UI
-ui <- fluidPage(
-  titlePanel("Mapping Data from SQLite Database"),
-  sidebarLayout(
-    sidebarPanel(
-      sliderInput("time", "Select Time Range:",
-                  min = as.POSIXct("2023-09-01 00:00:00"),
-                  max = Sys.time(),
-                  value = c(as.POSIXct("2023-01-01 00:00:00"), Sys.time()),
-                  timeFormat = "%Y-%m-%d %H:%M:%S",
-                  step = 3600),
-      textOutput("npoints"),
-      textOutput("mean")
-    ),
-    mainPanel(
-        leafletOutput("map", height = "70vh"),
-        dygraphOutput("tsplot", height = "20vh")
-    )
+ui <- page_sidebar(
+  title = "LOCNESS Underway Mapper",
+ # nav_spacer(), # push nav items to the right
+ # nav_panel("Page 1", "Dashboard content"),
+ # nav_item(
+ #   input_dark_mode(id = "dark_mode", mode = "light")
+ # ),
+#)
+  sidebar = sidebar(
+    sliderInput("time", "Select Time Range:",
+                min = as.POSIXct("2023-09-01 00:00:00"),
+                max = Sys.time(),
+                value = c(as.POSIXct("2023-01-01 00:00:00"), Sys.time()),
+                timeFormat = "%Y-%m-%d %H:%M:%S",
+                step = 3600),
+    input_dark_mode(id = "dark_mode", mode = "light"),
+    textOutput("npoints"),
+    textOutput("mean")
+  ),
+  card(
+    leafletOutput("map", height = "70vh"),
+    dygraphOutput("tsplot", height = "20vh")
   )
 )
 
@@ -111,6 +102,12 @@ server <- function(input, output, session) {
     time_range <- c(as.integer(input$time[1]),
                     as.integer(Sys.time()))
     get_data(DB_FILE, time_range)
+  })
+  
+  observeEvent(input$dark_mode, {
+    if (input$dark_mode == "dark") {
+      showNotification("Welcome to the dark side!")
+    }
   })
   
   # Render Leaflet map
