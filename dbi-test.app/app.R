@@ -9,7 +9,41 @@ library(DBI)
 library(here)
 library(bslib)
 
-DB_FILE <- here("../locness-fluorologger/data.db")
+#DB_FILE <- here("../locness-fluorologger/data.db")
+DB_FILE <- here("data.db")
+
+# row counters for updates
+row_count <<- 0L
+previous_row_count <<- 0L
+display_data <- reactiveVal(NULL)
+
+con <- dbConnect(RSQLite::SQLite(), DB_FILE)
+
+db_data_chunk <- reactivePoll(
+  intervalMillis = 1000L, # check for a db update every second
+  session = NULL,
+  checkFunc = function() {
+    print(paste("Running checkFunc:", Sys.time()))
+    if(DBI::dbIsValid(con) && dbExistsTable(con, "data")){
+      row_count <<- dbGetQuery(con, "select count(*) from data")[[1]]
+    } else {
+      0L
+    }
+  },
+  valueFunc = function() {
+    if(DBI::dbIsValid(con) && dbExistsTable(con, "data")){
+      print(paste("Running valueFunc: Updating display_data | Current row count:", 
+                  row_count))
+      df <- dbGetQuery(con, sprintf("select * from data LIMIT %s OFFSET %s", 
+                                    row_count-previous_row_count, 
+                                    previous_row_count))
+      previous_row_count <<- row_count
+      df
+    } else {
+      NULL
+    }
+  }
+)
 
 # TODO: Catch no data error
 get_data <- function(db_file, time_range, last_read_time) {
@@ -100,8 +134,8 @@ ui <- page_sidebar(
     input_dark_mode(id = "dark_mode", mode = "light"),
     textOutput("npoints"),
     textOutput("mean"),
-    textOutput("time"),
-    textOutput("lasttime")
+    #textOutput("time"),
+    #textOutput("lasttime")
   ),
   card(
     leafletOutput("map", height = "70vh"),
@@ -115,14 +149,23 @@ server <- function(input, output, session) {
   last_read_time <- reactiveVal(0L)
   
   # Reactive expression to fetch data based on time range
-  data <- reactive({
-    invalidateLater(5000)
-    time_range <- c(as.integer(input$time[1]),
-                    as.integer(Sys.time()))
-    df <- get_data(DB_FILE, time_range, FALSE) #as.integer(Sys.time()) - 5) #last_read_time())
-    last_read_time(df$timestamp[nrow(df)])
-    df
+  #data <- reactive({
+  #  invalidateLater(5000)
+  #  time_range <- c(as.integer(input$time[1]),
+  #                  as.integer(Sys.time()))
+  #  df <- get_data(DB_FILE, time_range, FALSE) #as.integer(Sys.time()) - 5) #last_read_time())
+  #  last_read_time(df$timestamp[nrow(df)])
+  #  df
+  #})
+  
+  observeEvent(db_data_chunk(), {
+    if(is.null(display_data())){
+      display_data(db_data_chunk())
+    } else {
+      display_data(rbind(display_data(), db_data_chunk()))
+    }
   })
+  # check ?dataTableProxy() and ?replaceData() to avoid re-rendering the table
   
   observeEvent(input$dark_mode, {
     if (input$dark_mode == "dark") {
@@ -137,12 +180,12 @@ server <- function(input, output, session) {
   
   # Add points Leaflet map
   observe({
-    map_add("map", data(), "concentration", plot_new = TRUE)
+    map_add("map", db_data_chunk(), "concentration", plot_new = FALSE)
   })
   
   #Render timeseries
   output$tsplot <- renderDygraph({
-    df <- data() %>%
+    df <- display_data() %>%
       mutate(timestamp = as.POSIXct(timestamp)) %>% 
       select(timestamp, concentration)
     dygraph(df) %>% 
@@ -151,10 +194,10 @@ server <- function(input, output, session) {
       dyAxis("y", label = "Rhodamine Conc. (ppb)", valueRange = c(0.001, 500))
   })
   
-  output$npoints <- renderText(nrow(data()))
-  output$mean <- renderText(mean(data()$voltage, na.rm = TRUE))
-  output$time <- renderText(data()$timestamp[nrow(data())])
-  output$lasttime <- renderText(last_read_time())
+  output$npoints <- renderText(nrow(display_data()))
+  output$mean <- renderText(mean(display_data()$voltage, na.rm = TRUE))
+  #output$time <- renderText(data()$timestamp[nrow(data())])
+  #output$lasttime <- renderText(last_read_time())
 }
 
 # Run the application 
