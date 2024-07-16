@@ -10,6 +10,7 @@ library(here)
 
 DB_FILE <- here("../locness-fluorologger/data.db")
 
+# TODO: Catch no data error
 get_data <- function(db_file, time_range) {
   con <- dbConnect(RSQLite::SQLite(), DB_FILE)
   query <- sprintf("SELECT * FROM data
@@ -22,15 +23,10 @@ get_data <- function(db_file, time_range) {
 }
     
 map_plot <- function() {
-  leaflet(options = leafletOptions(zoomControl = FALSE)) |> 
+  leaflet(options = leafletOptions(maxZoom = 25)) |> 
     # add ocean basemap
     addProviderTiles(providers$Esri.OceanBasemap) %>%
-    addMiniMap(tiles = providers$Esri,
-               toggleDisplay = TRUE,
-               position = "bottomleft",
-               width = 200, 
-               height = 200,
-               zoomLevelOffset = -6)
+    setView(-70.65, 41.5285, zoom = 15)
 }
 
 map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20,
