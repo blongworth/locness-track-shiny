@@ -75,6 +75,7 @@ map_add <- function(mapid, data, point_var,
                )
 }
 
+cur_time <- Sys.time()
 # Define UI
 ui <- page_sidebar(
   title = "LOCNESS Underway Mapper",
@@ -86,9 +87,9 @@ ui <- page_sidebar(
 #)
   sidebar = sidebar(
     sliderInput("time", "Select Time Range:",
-                min = as.POSIXct("2023-09-01 00:00:00"),
+                min = as.POSIXct("2024-01-01 00:00:00"),
                 max = Sys.time(),
-                value = c(as.POSIXct("2023-01-01 00:00:00"), Sys.time()),
+                value = c(as.POSIXct("2024-07-01 00:00:00"), cur_time),
                 timeFormat = "%Y-%m-%d %H:%M:%S",
                 step = 3600),
     input_dark_mode(id = "dark_mode", mode = "light"),
