@@ -30,14 +30,17 @@ map_plot <- function() {
     setView(-70.65, 41.5285, zoom = 15)
 }
 
-map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20,
+map_add <- function(mapid, data, point_var, 
+                    palette = "magma", n_quantiles = 20,
                     new_legend = TRUE) {
   pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
   #pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
   data <- drop_na(data, {{point_var}})
+  ship_lat <- data$latitude[nrow(data)]
+  ship_lon <- data$longitude[nrow(data)]
   m <- leafletProxy(mapid, data = data) |> 
-    clearGroup("quantity")
-  
+    clearGroup("ship") |> 
+    clearGroup("quantity") 
   if (new_legend) {
     m <- m |> 
       removeControl("legend") |> 
@@ -65,7 +68,11 @@ map_add <- function(mapid, data, point_var, palette = "magma", n_quantiles = 20,
       radius = 2,
       stroke = FALSE,
       fillOpacity = 0.8,
-      color = ~pal(data[[point_var]]))
+      color = ~pal(data[[point_var]])) |> 
+    addMarkers(group = "ship",
+               lng = ship_lon,
+               lat = ship_lat,
+               )
 }
 
 # Define UI
