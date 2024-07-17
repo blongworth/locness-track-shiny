@@ -9,8 +9,8 @@ library(DBI)
 library(here)
 library(bslib)
 
-#DB_FILE <- here("../locness-fluorologger/data.db")
-DB_FILE <- here("data.db")
+DB_FILE <- here("../locness-fluorologger/data.db")
+#DB_FILE <- here("data.db")
 
 # row counters for updates
 row_count <<- 0L
@@ -23,7 +23,7 @@ db_data_chunk <- reactivePoll(
   intervalMillis = 2000L, # check for a db update every second
   session = NULL,
   checkFunc = function() {
-    print(paste("Running checkFunc:", Sys.time()))
+    #print(paste("Running checkFunc:", Sys.time()))
     if(DBI::dbIsValid(con) && dbExistsTable(con, "data")){
       row_count <<- dbGetQuery(con, "select count(*) from data")[[1]]
     } else {
@@ -32,13 +32,14 @@ db_data_chunk <- reactivePoll(
   },
   valueFunc = function() {
     if(DBI::dbIsValid(con) && dbExistsTable(con, "data")){
-      print(paste("Running valueFunc: Updating display_data | Current row count:", 
-                  row_count))
+      #print(paste("Running valueFunc: Updating display_data | Current row count:", 
+      #            row_count))
       df <- dbGetQuery(con, sprintf("select * from data LIMIT %s OFFSET %s", 
                                     row_count-previous_row_count, 
                                     previous_row_count))
       previous_row_count <<- row_count
-      df
+      df |> 
+        mutate(new = TRUE)
     } else {
       NULL
     }
@@ -67,6 +68,7 @@ map_plot <- function() {
 
 map_add <- function(mapid, data, point_var, 
                     clear_points = FALSE,
+                    plot_new = FALSE,
                     palette = "magma", n_quantiles = 20,
                     new_legend = TRUE) {
   pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
@@ -74,6 +76,10 @@ map_add <- function(mapid, data, point_var,
   data <- drop_na(data, {{point_var}})
   ship_lat <- data$latitude[nrow(data)]
   ship_lon <- data$longitude[nrow(data)]
+  if (plot_new) {
+    data <- data |> 
+      filter(new == TRUE)
+  }
   m <- leafletProxy(mapid, data = data) |> 
     clearGroup("ship")
   if (clear_points) {
@@ -132,6 +138,8 @@ ui <- page_sidebar(
                 timeFormat = "%Y-%m-%d %H:%M:%S",
                 step = 3600),
     input_dark_mode(id = "dark_mode", mode = "light"),
+    actionButton("redraw",
+                 "Redraw plot"),  
     textOutput("npoints"),
     textOutput("mean"),
     textOutput("time"),
@@ -148,9 +156,14 @@ server <- function(input, output, session) {
   
   observeEvent(db_data_chunk(), {
     if(is.null(display_data())){
-      display_data(db_data_chunk())
+      db_data_chunk() |> 
+        display_data()
     } else {
-      display_data(rbind(display_data(), db_data_chunk()))
+      display_data() |> 
+        mutate(new = FALSE) |> 
+        rbind(db_data_chunk()) |> 
+        display_data()
+      #display_data(rbind(display_data(), db_data_chunk()))
     }
   })
   # check ?dataTableProxy() and ?replaceData() to avoid re-rendering the table
@@ -166,9 +179,20 @@ server <- function(input, output, session) {
     map_plot()
   })
   
+  # Redraw leaflet map
+  observeEvent(input$redraw,
+               {map_add("map", display_data(), "concentration",
+                        clear_points = TRUE,
+                        plot_new = FALSE,
+                        new_legend = TRUE)
+               }
+  )
+  
   # Add points Leaflet map
   observe({
-    map_add("map", db_data_chunk(), "concentration", clear_points = FALSE)
+    map_add("map", display_data(), "concentration",
+            clear_points = FALSE, plot_new = TRUE,
+            new_legend = FALSE)
   })
   
   # Plot subset
@@ -185,10 +209,16 @@ server <- function(input, output, session) {
   })
   
   output$npoints <- renderText(nrow(display_data()))
-  output$mean <- renderText(mean(display_data()$voltage, na.rm = TRUE))
+  output$mean <- renderText(mean(display_data()$concentration, na.rm = TRUE))
   output$time <- renderText(row_count)
   output$lasttime <- renderText(previous_row_count)
 }
 
 # Run the application 
-shinyApp(ui = ui, server = server)
+shinyApp(ui = ui, 
+         server = server, 
+         onStart = function() {
+  onStop(function() {
+    dbDisconnect(con)
+  })
+})
