@@ -20,7 +20,7 @@ display_data <- reactiveVal(NULL)
 con <- dbConnect(RSQLite::SQLite(), DB_FILE)
 
 db_data_chunk <- reactivePoll(
-  intervalMillis = 1000L, # check for a db update every second
+  intervalMillis = 2000L, # check for a db update every second
   session = NULL,
   checkFunc = function() {
     print(paste("Running checkFunc:", Sys.time()))
@@ -61,25 +61,25 @@ get_data <- function(db_file, time_range, last_read_time) {
 map_plot <- function() {
   leaflet(options = leafletOptions(maxZoom = 25)) |> 
     # add ocean basemap
-    addProviderTiles(providers$Esri.OceanBasemap) %>%
+    addProviderTiles(providers$Esri.OceanBasemap) |>
     setView(-70.65, 41.5285, zoom = 15)
 }
 
 map_add <- function(mapid, data, point_var, 
-                    plot_new = FALSE,
+                    clear_points = FALSE,
                     palette = "magma", n_quantiles = 20,
                     new_legend = TRUE) {
   pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
   #pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
-  if (plot_new) {
-    data <- data |> filter(new)
-  }
   data <- drop_na(data, {{point_var}})
   ship_lat <- data$latitude[nrow(data)]
   ship_lon <- data$longitude[nrow(data)]
   m <- leafletProxy(mapid, data = data) |> 
-    clearGroup("ship")# |> 
-    #clearGroup("quantity") 
+    clearGroup("ship")
+  if (clear_points) {
+    m <- m |> 
+    clearGroup("quantity") 
+  }
   if (new_legend) {
     m <- m |> 
       removeControl("legend") |> 
@@ -134,8 +134,8 @@ ui <- page_sidebar(
     input_dark_mode(id = "dark_mode", mode = "light"),
     textOutput("npoints"),
     textOutput("mean"),
-    #textOutput("time"),
-    #textOutput("lasttime")
+    textOutput("time"),
+    textOutput("lasttime")
   ),
   card(
     leafletOutput("map", height = "70vh"),
@@ -145,18 +145,6 @@ ui <- page_sidebar(
 
 # Define server logic
 server <- function(input, output, session) {
-  
-  last_read_time <- reactiveVal(0L)
-  
-  # Reactive expression to fetch data based on time range
-  #data <- reactive({
-  #  invalidateLater(5000)
-  #  time_range <- c(as.integer(input$time[1]),
-  #                  as.integer(Sys.time()))
-  #  df <- get_data(DB_FILE, time_range, FALSE) #as.integer(Sys.time()) - 5) #last_read_time())
-  #  last_read_time(df$timestamp[nrow(df)])
-  #  df
-  #})
   
   observeEvent(db_data_chunk(), {
     if(is.null(display_data())){
@@ -180,8 +168,10 @@ server <- function(input, output, session) {
   
   # Add points Leaflet map
   observe({
-    map_add("map", db_data_chunk(), "concentration", plot_new = FALSE)
+    map_add("map", db_data_chunk(), "concentration", clear_points = FALSE)
   })
+  
+  # Plot subset
   
   #Render timeseries
   output$tsplot <- renderDygraph({
@@ -196,8 +186,8 @@ server <- function(input, output, session) {
   
   output$npoints <- renderText(nrow(display_data()))
   output$mean <- renderText(mean(display_data()$voltage, na.rm = TRUE))
-  #output$time <- renderText(data()$timestamp[nrow(data())])
-  #output$lasttime <- renderText(last_read_time())
+  output$time <- renderText(row_count)
+  output$lasttime <- renderText(previous_row_count)
 }
 
 # Run the application 
