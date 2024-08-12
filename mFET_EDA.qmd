@@ -1,0 +1,54 @@
+---
+title: "mFET_plots"
+format: html
+editor: source
+---
+
+Plots for data from Yui Takeshita's mFET pH sensor from MBARI.
+
+```{r}
+library(tidyverse)
+library(patchwork)
+```
+
+```{r}
+df <- read_csv("../locness-ph/pH_data.csv") |> 
+  mutate(ph_time = mdy_hms(ph_time))
+
+df <- df |> 
+  filter(pc_time > "2024-08-09 20:19:00")
+```
+
+pH
+
+Calculated using constant temp and salinity
+
+```{r}
+vrse <- ggplot(df, aes(pc_time, vrse)) +
+  geom_line() +
+  geom_pointrange(aes(ymin = vrse - vrse_std,
+                      ymax = vrse + vrse_std),
+                  size = 0.5) +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
+
+ph <- ggplot(df, aes(pc_time, ph_total)) +
+  geom_line() +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
+
+temp <- ggplot(df, aes(pc_time, t_board)) +
+  geom_line() +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
+
+bat <- ggplot(df, aes(pc_time, v_bat)) +
+  geom_line()
+
+
+vrse / ph / temp / bat
+
+```
+
+
+
