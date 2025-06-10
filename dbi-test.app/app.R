@@ -9,7 +9,7 @@ library(DBI)
 library(here)
 library(bslib)
 
-DB_FILE <- here("../locness-fluorologger/data.db")
+DB_FILE <- "C:/Users/CSL 2/Documents/LOCNESS_data/underway.db"
 #DB_FILE <- here("data.db")
 
 # row counters for updates
@@ -39,7 +39,9 @@ db_data_chunk <- reactivePoll(
                                     previous_row_count))
       previous_row_count <<- row_count
       df |> 
-        mutate(new = TRUE)
+        mutate(new = TRUE,
+               latitude = na_if(as.numeric(latitude), 0),
+               longitude = na_if(as.numeric(longitude), 0))
     } else {
       NULL
     }
@@ -72,13 +74,21 @@ map_add <- function(mapid, data, point_var,
                     palette = "magma", n_quantiles = 20,
                     new_legend = TRUE) {
   pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
-  #pal <- colorQuantile(palette, data[[point_var]], n = n_quantiles)
-  data <- drop_na(data, {{point_var}})
+  data <- drop_na(data, c(latitude, longitude, {{point_var}})) |>
+    filter(latitude != 0, longitude != 0) 
+  # Return early if no data after filtering
+  if (nrow(data) == 0) {
+    return(invisible(NULL))
+  }
   ship_lat <- data$latitude[nrow(data)]
   ship_lon <- data$longitude[nrow(data)]
   if (plot_new) {
     data <- data |> 
       filter(new == TRUE)
+    # Return early if no new data to plot
+    if (nrow(data) == 0) {
+      return(invisible(NULL))
+    }
   }
   m <- leafletProxy(mapid, data = data) |> 
     clearGroup("ship")
@@ -101,10 +111,8 @@ map_add <- function(mapid, data, point_var,
                            n = length(cuts)
                            cuts <- round(cuts, 1)
                            paste0(cuts[-n], " &ndash; ", cuts[-1])
-                           #cuts[length(cuts)] <- NA
                          })
   }
-  
   m |> 
     addCircleMarkers(
       lng= ~longitude,
