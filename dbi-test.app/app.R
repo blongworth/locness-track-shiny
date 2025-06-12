@@ -4,7 +4,7 @@ library(RSQLite)
 library(dplyr)
 library(tidyr)
 library(leaflet)
-library(dygraphs)
+library(plotly)
 library(DBI)
 library(here)
 library(bslib)
@@ -20,7 +20,7 @@ display_data <- reactiveVal(NULL)
 con <- dbConnect(RSQLite::SQLite(), DB_FILE)
 
 db_data_chunk <- reactivePoll(
-  intervalMillis = 2000L, # check for a db update every second
+  intervalMillis = 10000L, # check for a db update every second
   session = NULL,
   checkFunc = function() {
     #print(paste("Running checkFunc:", Sys.time()))
@@ -145,17 +145,20 @@ ui <- page_sidebar(
                 value = c(as.POSIXct("2024-07-01 00:00:00"), cur_time),
                 timeFormat = "%Y-%m-%d %H:%M:%S",
                 step = 3600),
+    selectInput("resample", "Resample interval:",
+                choices = c("1 min" = "1 min", "5 min" = "5 min", "10 min" = "10 min"),
+                selected = "10 min"),
     input_dark_mode(id = "dark_mode", mode = "light"),
     actionButton("redraw",
-                 "Redraw plot"),  
+                 "Redraw plot"),
     textOutput("npoints"),
     textOutput("mean"),
-    textOutput("time"),
+    #textOutput("time"),
     textOutput("lasttime")
   ),
   card(
     leafletOutput("map", height = "70vh"),
-    dygraphOutput("tsplot", height = "20vh")
+    plotlyOutput("tsplot", height = "20vh")
   )
 )
 
@@ -205,20 +208,63 @@ server <- function(input, output, session) {
   
   # Plot subset
   
-  #Render timeseries
-  output$tsplot <- renderDygraph({
+  #Store plotly layout state in a reactive value
+  plotly_layout <- reactiveVal(list(xaxis = NULL, yaxis = list(type = 'log', range = c(log10(0.001), log10(500)))))
+
+  #Render timeseries with plotly
+  output$tsplot <- renderPlotly({
+    req(display_data())
     df <- display_data() %>%
-      mutate(timestamp = as.POSIXct(timestamp)) %>% 
+      mutate(timestamp = as.POSIXct(timestamp)) %>%
       select(timestamp, concentration)
-    dygraph(df) %>% 
-      dyRangeSelector() %>% 
-      dyOptions(logscale = TRUE) |> 
-      dyAxis("y", label = "Rhodamine Conc. (ppb)", valueRange = c(0.001, 500))
+    # Resample by user-selected interval
+    interval <- input$resample
+    df <- df %>%
+      mutate(time_bin = cut(timestamp, breaks = interval)) %>%
+      group_by(time_bin) %>%
+      summarize(
+        timestamp = first(timestamp),
+        concentration = mean(concentration, na.rm = TRUE),
+        .groups = 'drop'
+      )
+    # Use stored layout if available
+    layout_opts <- plotly_layout()
+    plt <- plot_ly(df, x = ~timestamp, y = ~concentration, type = 'scatter', mode = 'lines+markers', name = 'Rhodamine', source = 'tsplot') %>%
+      event_register('plotly_relayout')
+    # Always set yaxis log and range, but preserve xaxis range if available
+    yaxis_opts <- layout_opts$yaxis
+    if (is.null(yaxis_opts)) {
+      yaxis_opts <- list(title = 'Rhodamine Conc. (ppb)', type = 'log', range = c(log10(0.001), log10(500)))
+    } else {
+      yaxis_opts$title <- 'Rhodamine Conc. (ppb)'
+      yaxis_opts$type <- 'log'
+      yaxis_opts$range <- c(log10(0.001), log10(500))
+    }
+    if (!is.null(layout_opts$xaxis) && !is.null(layout_opts$xaxis$range)) {
+      plt <- layout(plt, xaxis = layout_opts$xaxis, yaxis = yaxis_opts)
+    } else {
+      plt <- layout(plt, yaxis = yaxis_opts)
+    }
+    plt
+  })
+  
+  # Listen for relayout events and store the current layout
+  observeEvent(event_data("plotly_relayout", source = "tsplot"), {
+    layout_evt <- event_data("plotly_relayout", source = "tsplot")
+    cur_layout <- plotly_layout() %||% list()
+    # Only update axis ranges if present in event
+    if (!is.null(layout_evt[["xaxis.range[0]"]]) && !is.null(layout_evt[["xaxis.range[1]"]])) {
+      cur_layout$xaxis <- list(range = c(layout_evt[["xaxis.range[0]"]], layout_evt[["xaxis.range[1]"]]))
+    }
+    if (!is.null(layout_evt[["yaxis.range[0]"]]) && !is.null(layout_evt[["yaxis.range[1]"]])) {
+      cur_layout$yaxis <- list(range = c(layout_evt[["yaxis.range[0]"]], layout_evt[["yaxis.range[1]"]]), type = 'log', title = 'Rhodamine Conc. (ppb)')
+    }
+    plotly_layout(cur_layout)
   })
   
   output$npoints <- renderText(nrow(display_data()))
   output$mean <- renderText(mean(display_data()$concentration, na.rm = TRUE))
-  output$time <- renderText(row_count)
+  #output$time <- renderText(row_count)
   output$lasttime <- renderText(previous_row_count)
 }
 
